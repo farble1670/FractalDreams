@@ -135,58 +135,13 @@ class JuliaDreamService : FractalDreamService() {
         i++
       }
 
-      if (SMOOTH_COLORS) {
-        if (i < MAX_ITERATIONS) {
-          val logZn = log2LookupTable[((zx * zx + zy * zy) * LOOKUP_SCALE_FACTOR).toInt().coerceIn(0, 65535)] / 2.0
-          val nu = log2LookupTable[logZn.toInt().coerceIn(0, 65535)] / LOG2_2
-          val continuousIndex = i + 1 - nu
-          val index1 = continuousIndex.toInt()
-          val index2 = index1 + 1
-
-          val color1 = colorPalette[(index1 + colorOffset) % MAX_ITERATIONS]
-          val color2 = colorPalette[(index2 + colorOffset) % MAX_ITERATIONS]
-          
-          val fraction = (continuousIndex - continuousIndex.toInt()).toFloat()
-          val r = (Colors.r(color1) * (1 - fraction) + Colors.r(color2) * fraction).toInt()
-          val g = (Colors.g(color1) * (1 - fraction) + Colors.g(color2) * fraction).toInt()
-          val b = (Colors.b(color1) * (1 - fraction) + Colors.b(color2) * fraction).toInt()
-
-          return Colors.rgb(r, g, b)
-        }
-
-        return colorPalette[MAX_ITERATIONS]
-      } else {
-        return colorPalette[(i + colorOffset) % MAX_ITERATIONS]
-      }
+      return calculateColor(i, zx, zy)
     }
 
-    override val scaleFactor: Int = SCALE_FACTOR
-    override val precisionLimit: Double = PRECISION_LIMIT
-    override val zoomFactor: Double = ZOOM_FACTOR
-    override val slices: Int = SLICES
-    override val useBlockOptimization: Boolean = USE_BLOCK_OPTIMIZATION
-    override val blockDensityDivisor: Int = BLOCK_DENSITY_DIVISOR
-    override val minBlockSize: Int = MIN_BLOCK_SIZE
-    override val maxBlockSize: Int = MAX_BLOCK_SIZE
-    override val samplesPerAxis: Int = SAMPLES_PER_AXIS
-    override val cropToSquare: Boolean = CROP_TO_SQUARE
+
   }
 
   companion object {
-    private const val SCALE_FACTOR = 2
-    private const val PRECISION_LIMIT = 1.0E-9
-    private const val ZOOM_FACTOR = 0.98
-    private val SLICES = Runtime.getRuntime().availableProcessors()
-    private const val ZOOM_SEARCH_MAX = 1024
     private val FALLBACK_C = Pair(-0.7, 0.27015)
-    private const val ESCAPE_RADIUS_SQUARED = 4.0
-    private val LOG2_2 = log2(2.0)
-    private const val SMOOTH_COLORS = true
-    private const val USE_BLOCK_OPTIMIZATION = true
-    private const val BLOCK_DENSITY_DIVISOR = 4096
-    private const val MIN_BLOCK_SIZE = 8
-    private const val MAX_BLOCK_SIZE = 64
-    private const val SAMPLES_PER_AXIS = 4
-    private const val CROP_TO_SQUARE = true
   }
 }
