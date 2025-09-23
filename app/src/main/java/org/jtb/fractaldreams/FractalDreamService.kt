@@ -115,8 +115,10 @@ abstract class FractalDreamService : DreamService() {
         init {
             isClickable = true
 
-            for (i in log2LookupTable.indices) {
-                log2LookupTable[i] = log2(i.toDouble())
+            if (USE_LOG2_LOOKUP) {
+                for (i in log2LookupTable.indices) {
+                    log2LookupTable[i] = log2(i.toDouble())
+                }
             }
 
             val gestureListener = object : GestureDetector.SimpleOnGestureListener() {
@@ -491,8 +493,17 @@ abstract class FractalDreamService : DreamService() {
             }
 
             if (SMOOTH_COLORS) {
-                val logZn = log2LookupTable[((zx * zx + zy * zy) * LOOKUP_SCALE_FACTOR).toInt().coerceIn(0, 65535)] / 2.0
-                val nu = log2LookupTable[logZn.toInt().coerceIn(0, 65535)] / LOG2_2
+                val logZn: Double
+                val nu: Double
+
+                if (USE_LOG2_LOOKUP) {
+                    logZn = log2LookupTable[((zx * zx + zy * zy) * LOOKUP_SCALE_FACTOR).toInt().coerceIn(0, 65535)] / 2.0
+                    nu = log2LookupTable[logZn.toInt().coerceIn(0, 65535)] / LOG2_2
+                } else {
+                    logZn = log2(zx * zx + zy * zy) / 2.0
+                    nu = log2(logZn) / LOG2_2
+                }
+
                 val continuousIndex = (i + 1 - nu).coerceAtLeast(0.0)
                 val index1 = continuousIndex.toInt()
                 val index2 = index1 + 1
@@ -536,5 +547,6 @@ abstract class FractalDreamService : DreamService() {
         const val SAMPLES_PER_AXIS = 4
         const val CROP_TO_SQUARE = true
         const val SMOOTH_COLORS = true
+        const val USE_LOG2_LOOKUP = true
     }
 }
