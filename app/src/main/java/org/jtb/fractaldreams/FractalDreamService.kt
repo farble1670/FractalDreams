@@ -88,7 +88,6 @@ abstract class FractalDreamService : DreamService() {
     protected val destRect = Rect()
     private val fpsDisplay = FpsDisplay()
     protected var colorOffset = 0
-    protected val log2LookupTable = DoubleArray(65536)
 
     /**
      * Pre-computer our color palette to avoid calling [Color.HSVToColor] in the hot path.
@@ -115,12 +114,6 @@ abstract class FractalDreamService : DreamService() {
 
     init {
       isClickable = true
-
-      if (USE_LOG2_LOOKUP) {
-        for (i in log2LookupTable.indices) {
-          log2LookupTable[i] = log2(i.toDouble())
-        }
-      }
 
       val gestureListener = object : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -159,8 +152,6 @@ abstract class FractalDreamService : DreamService() {
           // This is the point we want to center on
           targetX = finalZx
           targetY = finalZy
-          cXmin = finalZx - cWidth / 2.0
-          cYmin = finalZy - cHeight / 2.0
 
           return true
         }
@@ -220,7 +211,9 @@ abstract class FractalDreamService : DreamService() {
       targetY = newTarget.second
 
       while (serviceScope.isActive) {
-        colorOffset++ // Increment the color offset each frame
+        if (ROTATE_PALETTE) {
+          colorOffset++ // Increment the color offset each frame
+        }
 
         if (cWidth < PRECISION_LIMIT) {
           cXmin = cXminInitial
@@ -247,7 +240,7 @@ abstract class FractalDreamService : DreamService() {
         postInvalidate()
 
         // Reactive check as a fallback
-        if (isBoring(backBitmap, width, height)) {
+        if (isBoring(frontBitmap, width, height)) {
           cXmin = cXminInitial;
           cYmin = cYminInitial;
           cWidth = cWidthInitial;
@@ -534,17 +527,8 @@ abstract class FractalDreamService : DreamService() {
       }
 
       if (SMOOTH_COLORS) {
-        val logZn: Double
-        val nu: Double
-
-        if (USE_LOG2_LOOKUP) {
-          logZn = log2LookupTable[((zx * zx + zy * zy) * LOOKUP_SCALE_FACTOR).toInt()
-            .coerceIn(0, 65535)] / 2.0
-          nu = log2LookupTable[logZn.toInt().coerceIn(0, 65535)] / LOG2_2
-        } else {
-          logZn = log2(zx * zx + zy * zy) / 2.0
-          nu = log2(logZn) / LOG2_2
-        }
+        val logZn = log2(zx * zx + zy * zy) / 2.0
+        val nu = log2(logZn) / LOG2_2
 
         val continuousIndex = (i + 1 - nu).coerceAtLeast(0.0)
         val index1 = continuousIndex.toInt()
@@ -589,7 +573,7 @@ abstract class FractalDreamService : DreamService() {
     @JvmField
     val SLICES = Runtime.getRuntime().availableProcessors()
     const val ZOOM_SEARCH_MAX = 1024
-    const val ESCAPE_RADIUS_SQUARED = 4.0
+    const val ESCAPE_RADIUS_SQUARED = 10000.0
 
     @JvmField
     val LOG2_2 = log2(2.0)
@@ -600,6 +584,6 @@ abstract class FractalDreamService : DreamService() {
     const val SAMPLES_PER_AXIS = 4
     const val CROP_TO_SQUARE = true
     const val SMOOTH_COLORS = true
-    const val USE_LOG2_LOOKUP = true
+    const val ROTATE_PALETTE = false
   }
 }
