@@ -88,6 +88,8 @@ abstract class FractalDreamService : DreamService() {
     protected val destRect = Rect()
     private val fpsDisplay = FpsDisplay()
     protected var colorOffset = 0
+    protected val logMagnitudeLookupTable = DoubleArray(65536)
+    protected val logLogLookupTable = DoubleArray(65536)
 
     /**
      * Pre-computer our color palette to avoid calling [Color.HSVToColor] in the hot path.
@@ -114,6 +116,17 @@ abstract class FractalDreamService : DreamService() {
 
     init {
       isClickable = true
+
+      if (USE_LOG2_LOOKUP) {
+        for (i in logMagnitudeLookupTable.indices) {
+          val input = 4.0 + (i.toDouble() / 65535.0) * 32.0 // Range [4.0, 36.0]
+          logMagnitudeLookupTable[i] = log2(input)
+        }
+        for (i in logLogLookupTable.indices) {
+          val input = 1.0 + (i.toDouble() / 65535.0) * 1.585 // Approx range [1.0, 2.585]
+          logLogLookupTable[i] = log2(input)
+        }
+      }
 
       val gestureListener = object : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -174,7 +187,9 @@ abstract class FractalDreamService : DreamService() {
           val xOffset = (w - size) / 2
           val yOffset = (h - size) / 2
           destRect.set(xOffset, yOffset, w - xOffset, h - yOffset)
-        } else {
+        }
+
+        else {
           renderWidth = w
           renderHeight = h
           destRect.set(0, 0, w, h)
@@ -449,8 +464,7 @@ abstract class FractalDreamService : DreamService() {
       jobs.awaitAll()
     }
 
-    @Suppress("NOTHING_TO_INLINE")
-    private inline fun renderBlock(
+    private fun renderBlock(
       currentBlockHeight: Int,
       currentBlockWidth: Int,
       colorArray: IntArray,
@@ -484,8 +498,7 @@ abstract class FractalDreamService : DreamService() {
       )
     }
 
-    @Suppress("NOTHING_TO_INLINE")
-    private inline fun fillBlock(
+    private fun fillBlock(
       currentBlockHeight: Int,
       currentBlockWidth: Int,
       colorArray: IntArray,
@@ -520,15 +533,25 @@ abstract class FractalDreamService : DreamService() {
       fpsDisplay.draw(canvas)
     }
 
-    @Suppress("NOTHING_TO_INLINE")
-    protected inline fun calculateColor(i: Int, zx: Double, zy: Double): Int {
+    protected fun calculateColor(i: Int, zx: Double, zy: Double): Int {
       if (i == MAX_ITERATIONS) {
         return colorPalette[MAX_ITERATIONS]
       }
 
       if (SMOOTH_COLORS) {
-        val logZn = log2(zx * zx + zy * zy) / 2.0
-        val nu = log2(logZn) / LOG2_2
+        val magSq = zx * zx + zy * zy
+        val logZn: Double
+        val nu: Double
+
+        if (USE_LOG2_LOOKUP) {
+          val index = ((magSq - 4.0) * LOG_MAGNITUDE_SCALE_FACTOR).toInt().coerceIn(0, 65535)
+          logZn = logMagnitudeLookupTable[index] / 2.0
+          val nuIndex = ((logZn - 1.0) * LOG_LOG_SCALE_FACTOR).toInt().coerceIn(0, 65535)
+          nu = logLogLookupTable[nuIndex] / LOG2_2
+        } else {
+          logZn = log2(magSq) / 2.0
+          nu = log2(logZn) / LOG2_2
+        }
 
         val continuousIndex = (i + 1 - nu).coerceAtLeast(0.0)
         val index1 = continuousIndex.toInt()
@@ -564,7 +587,6 @@ abstract class FractalDreamService : DreamService() {
 
   companion object {
     const val MAX_ITERATIONS = 256
-    const val LOOKUP_SCALE_FACTOR = 65535.0 / 4.0
 
     const val SCALE_FACTOR = 2
     const val PRECISION_LIMIT = 1.0E-6
@@ -573,7 +595,7 @@ abstract class FractalDreamService : DreamService() {
     @JvmField
     val SLICES = Runtime.getRuntime().availableProcessors()
     const val ZOOM_SEARCH_MAX = 1024
-    const val ESCAPE_RADIUS_SQUARED = 10000.0
+    const val ESCAPE_RADIUS_SQUARED = 4.0
 
     @JvmField
     val LOG2_2 = log2(2.0)
@@ -585,5 +607,8 @@ abstract class FractalDreamService : DreamService() {
     const val CROP_TO_SQUARE = true
     const val SMOOTH_COLORS = true
     const val ROTATE_PALETTE = false
+    const val USE_LOG2_LOOKUP = true
+    const val LOG_MAGNITUDE_SCALE_FACTOR = 65535.0 / 32.0 // (65535 / (36.0 - 4.0))
+    const val LOG_LOG_SCALE_FACTOR = 65535.0 / 1.585 // (65535 / (2.585 - 1.0))
   }
 }
