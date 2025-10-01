@@ -589,7 +589,7 @@ abstract class FractalDreamService : DreamService() {
     const val MAX_ITERATIONS = 256
 
     const val SCALE_FACTOR = 2
-    const val PRECISION_LIMIT = 1.0E-6
+    const val PRECISION_LIMIT = 1.0E-3
     const val ZOOM_FACTOR = 0.98
 
     @JvmField
@@ -606,7 +606,7 @@ abstract class FractalDreamService : DreamService() {
     const val SAMPLES_PER_AXIS = 4
     const val CROP_TO_SQUARE = true
     const val SMOOTH_COLORS = true
-    const val ROTATE_PALETTE = false
+    const val ROTATE_PALETTE = true
     const val USE_LOG2_LOOKUP = true
     const val LOG_MAGNITUDE_SCALE_FACTOR = 65535.0 / 32.0 // (65535 / (36.0 - 4.0))
     const val LOG_LOG_SCALE_FACTOR = 65535.0 / 1.585 // (65535 / (2.585 - 1.0))
