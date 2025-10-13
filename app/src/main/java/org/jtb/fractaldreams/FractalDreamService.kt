@@ -91,18 +91,13 @@ abstract class FractalDreamService : DreamService() {
     protected val logMagnitudeLookupTable = DoubleArray(65536)
     protected val logLogLookupTable = DoubleArray(65536)
 
+    protected abstract val maxIterations: Int
+
     /**
      * Pre-computer our color palette to avoid calling [Color.HSVToColor] in the hot path.
      */
-    protected val colorPalette = IntArray(MAX_ITERATIONS + 1) { i ->
-      if (i == MAX_ITERATIONS) Color.BLACK else Color.HSVToColor(
-          floatArrayOf(
-              (i.toFloat() / MAX_ITERATIONS) * 360f,
-              1f,
-              1f
-          )
-      )
-    }
+    @JvmField
+    protected var colorPalette: IntArray = IntArray(0)
 
     protected var targetX = 0.0
     protected var targetY = 0.0
@@ -176,6 +171,18 @@ abstract class FractalDreamService : DreamService() {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
       super.onSizeChanged(w, h, oldw, oldh)
 
+      if (colorPalette.size != maxIterations + 1) {
+        colorPalette = IntArray(maxIterations + 1) { i ->
+          if (i == maxIterations) Color.BLACK else Color.HSVToColor(
+              floatArrayOf(
+                  (i.toFloat() / maxIterations) * 360f,
+                  1f,
+                  1f
+              )
+          )
+        }
+      }
+
       if (w > 0 && h > 0) {
         val renderWidth: Int
         val renderHeight: Int
@@ -211,6 +218,8 @@ abstract class FractalDreamService : DreamService() {
       return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
     }
 
+    protected abstract val precisionLimit: Double
+
     private suspend fun animate(width: Int, height: Int) {
       val isPortrait = height > width
       val (cXminInitial, cYminInitial, cWidthInitial, cHeightInitial) =
@@ -220,6 +229,7 @@ abstract class FractalDreamService : DreamService() {
       cWidth = cWidthInitial
       cHeight = cHeightInitial
       angle = 0.0
+      colorOffset = kotlin.random.Random.nextInt(maxIterations)
 
       var newTarget = searchZoomPoint(width, height, isPortrait, cXmin, cYmin, cWidth, cHeight)
       targetX = newTarget.first
@@ -230,20 +240,7 @@ abstract class FractalDreamService : DreamService() {
           colorOffset++ // Increment the color offset each frame
         }
 
-        if (cWidth < PRECISION_LIMIT) {
-          cXmin = cXminInitial
-          cYmin = cYminInitial
-          cWidth = cWidthInitial
-          cHeight = cHeightInitial
-          angle = 0.0
-          newTarget =
-              searchZoomPoint(width, height, isPortrait, cXmin, cYmin, cWidth, cHeight)
-          targetX = newTarget.first
-          targetY = newTarget.second
-
-          continue // Skip the rest of the loop and start fresh
-        }
-
+        // Always render the current frame first.
         render(width, height, isPortrait, cXmin, cYmin, cWidth, cHeight, angle)
         synchronized(bufferLock) {
           val temp = frontBitmap;
@@ -254,25 +251,29 @@ abstract class FractalDreamService : DreamService() {
         fpsDisplay.update();
         postInvalidate()
 
-        // Reactive check as a fallback
-        if (isBoring(frontBitmap, width, height)) {
-          cXmin = cXminInitial;
-          cYmin = cYminInitial;
-          cWidth = cWidthInitial;
+        // Now, based on the frame we just drew, decide if we need to reset or zoom.
+        if (cWidth < precisionLimit || isBoring(frontBitmap, width, height)) {
+          // Reset the view to a new location.
+          onReset()
+          colorOffset = kotlin.random.Random.nextInt(maxIterations)
+          cXmin = cXminInitial
+          cYmin = cYminInitial
+          cWidth = cWidthInitial
           cHeight = cHeightInitial
           angle = 0.0
-
-          newTarget = searchZoomPoint(width, height, isPortrait, cXmin, cYmin, cWidth, cHeight)
+          newTarget =
+              searchZoomPoint(width, height, isPortrait, cXmin, cYmin, cWidth, cHeight)
           targetX = newTarget.first
           targetY = newTarget.second
+        } else {
+          // If we're not resetting, then zoom in for the next frame.
+          val newWidth = cWidth * ZOOM_FACTOR;
+          val newHeight = cHeight * ZOOM_FACTOR
+          cXmin += (cWidth - newWidth) * (targetX - cXmin) / cWidth
+          cYmin += (cHeight - newHeight) * (targetY - cYmin) / cHeight
+          cWidth = newWidth; cHeight = newHeight
+          angle += 0.01
         }
-
-        val newWidth = cWidth * ZOOM_FACTOR;
-        val newHeight = cHeight * ZOOM_FACTOR
-        cXmin += (cWidth - newWidth) * (targetX - cXmin) / cWidth
-        cYmin += (cHeight - newHeight) * (targetY - cYmin) / cHeight
-        cWidth = newWidth; cHeight = newHeight
-        angle += 0.01
       }
     }
 
@@ -289,7 +290,7 @@ abstract class FractalDreamService : DreamService() {
       // Reduce grid size to 8x8 (64 points) to maintain original sample density
       // over the smaller (1/4) sample area.
       val sampleGridSize = 8
-      val colorRangeThreshold = 32
+      val colorRangeThreshold = 48
 
       var minR = 255;
       var maxR = 0
@@ -534,8 +535,10 @@ abstract class FractalDreamService : DreamService() {
     }
 
     protected fun calculateColor(i: Int, zx: Double, zy: Double): Int {
-      if (i == MAX_ITERATIONS) {
-        return colorPalette[MAX_ITERATIONS]
+      val localMaxIterations = maxIterations
+      val palette = colorPalette
+      if (i == localMaxIterations) {
+        return palette[localMaxIterations]
       }
 
       if (SMOOTH_COLORS) {
@@ -557,8 +560,8 @@ abstract class FractalDreamService : DreamService() {
         val index1 = continuousIndex.toInt()
         val index2 = index1 + 1
 
-        val color1 = colorPalette[Math.floorMod(index1 + colorOffset, MAX_ITERATIONS)]
-        val color2 = colorPalette[Math.floorMod(index2 + colorOffset, MAX_ITERATIONS)]
+        val color1 = palette[Math.floorMod(index1 + colorOffset, localMaxIterations)]
+        val color2 = palette[Math.floorMod(index2 + colorOffset, localMaxIterations)]
 
         val fraction = (continuousIndex - continuousIndex.toInt()).toFloat()
         val r = (Colors.r(color1) * (1 - fraction) + Colors.r(color2) * fraction).toInt()
@@ -567,7 +570,7 @@ abstract class FractalDreamService : DreamService() {
 
         return Colors.rgb(r, g, b)
       } else {
-        return colorPalette[(i + colorOffset) % MAX_ITERATIONS]
+        return palette[(i + colorOffset) % localMaxIterations]
       }
     }
 
@@ -583,13 +586,14 @@ abstract class FractalDreamService : DreamService() {
     ): Pair<Double, Double>
 
     abstract fun getInitialCoordinates(isPortrait: Boolean, width: Int, height: Int): DoubleArray
+    open fun onReset() {}
   }
 
   companion object {
-    const val MAX_ITERATIONS = 256
+
 
     const val SCALE_FACTOR = 2
-    const val PRECISION_LIMIT = 1.0E-3
+
     const val ZOOM_FACTOR = 0.98
 
     @JvmField
@@ -606,7 +610,7 @@ abstract class FractalDreamService : DreamService() {
     const val SAMPLES_PER_AXIS = 4
     const val CROP_TO_SQUARE = true
     const val SMOOTH_COLORS = true
-    const val ROTATE_PALETTE = true
+    const val ROTATE_PALETTE = false
     const val USE_LOG2_LOOKUP = true
     const val LOG_MAGNITUDE_SCALE_FACTOR = 65535.0 / 32.0 // (65535 / (36.0 - 4.0))
     const val LOG_LOG_SCALE_FACTOR = 65535.0 / 1.585 // (65535 / (2.585 - 1.0))

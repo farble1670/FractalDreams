@@ -1,8 +1,6 @@
 package org.jtb.fractaldreams
 
 import android.content.Context
-import android.graphics.Color
-import kotlin.math.log2
 import kotlin.random.Random
 
 class JuliaDreamService : FractalDreamService() {
@@ -12,31 +10,30 @@ class JuliaDreamService : FractalDreamService() {
   }
 
   private inner class JuliaView(context: Context, serviceScope: kotlinx.coroutines.CoroutineScope) : FractalView(context, serviceScope) {
+    override val maxIterations = 256
+    override val precisionLimit = 1.0E-4
+
     private lateinit var juliaC: Pair<Double, Double>
 
-    /**
-     * Find an interesting C value on the Mandelbrot set boundary to use for our Julia set.
-     */
     private fun findInterestingConstant(): Pair<Double, Double> {
+      val localMaxIterations = maxIterations
       var bestX = 0.0
       var bestY = 0.0
       var maxIterationsFound = 0
 
-      // Search for a point that takes a while to escape, indicating it's near the boundary.
       (0 until ZOOM_SEARCH_MAX).forEach { i ->
         val zx = -2.0 + 3.0 * Random.nextDouble()
         val zy = -1.5 + 3.0 * Random.nextDouble()
 
         val iterations = iterateMandelbrotPixel(zx, zy)
 
-        if (iterations > maxIterationsFound && iterations < MAX_ITERATIONS) {
+        if (iterations > maxIterationsFound && iterations < localMaxIterations) {
           maxIterationsFound = iterations
           bestX = zx
           bestY = zy
         }
       }
 
-      // Fallback in case no interesting point is found
       if (maxIterationsFound == 0) {
         return FALLBACK_C
       }
@@ -44,14 +41,12 @@ class JuliaDreamService : FractalDreamService() {
       return Pair(bestX, bestY)
     }
 
-    /**
-     * This is a standard Mandelbrot iteration, used only to find an interesting C value.
-     */
     private fun iterateMandelbrotPixel(zx: Double, zy: Double): Int {
-      var cx = zx
-      var cy = zy
+      val localMaxIterations = maxIterations
+      var cx = 0.0
+      var cy = 0.0
       var i = 0
-      while (i < MAX_ITERATIONS && cx * cx + cy * cy < ESCAPE_RADIUS_SQUARED) {
+      while (i < localMaxIterations && cx * cx + cy * cy < ESCAPE_RADIUS_SQUARED) {
         val temp = cx * cx - cy * cy + zx
         cy = 2.0 * cx * cy + zy
         cx = temp
@@ -60,6 +55,9 @@ class JuliaDreamService : FractalDreamService() {
       return i
     }
 
+    override fun onReset() {
+      juliaC = findInterestingConstant()
+    }
 
     override fun getInitialCoordinates(isPortrait: Boolean, width: Int, height: Int): DoubleArray {
       juliaC = findInterestingConstant()
@@ -79,6 +77,7 @@ class JuliaDreamService : FractalDreamService() {
       cWidth: Double,
       cHeight: Double
     ): Pair<Double, Double> {
+      val localMaxIterations = maxIterations
       var bestX = 0.0
       var bestY = 0.0
       var maxIterationsFound = 0
@@ -95,21 +94,20 @@ class JuliaDreamService : FractalDreamService() {
         var tempZx = zx
         var tempZy = zy
         var iterations = 0
-        while (iterations < MAX_ITERATIONS && tempZx * tempZx + tempZy * tempZy < ESCAPE_RADIUS_SQUARED) {
+        while (iterations < localMaxIterations && tempZx * tempZx + tempZy * tempZy < ESCAPE_RADIUS_SQUARED) {
           val temp = tempZx * tempZx - tempZy * tempZy + jc_real
           tempZy = 2.0 * tempZx * tempZy + jc_imag
           tempZx = temp
           iterations++
         }
 
-        if (iterations > maxIterationsFound && iterations < MAX_ITERATIONS) {
+        if (iterations > maxIterationsFound && iterations < localMaxIterations) {
           maxIterationsFound = iterations
           bestX = zx
           bestY = zy
         }
       }
 
-      // Fallback in case no interesting point is found
       if (maxIterationsFound == 0) {
         return Pair(cXmin + cWidth / 2, cYmin + cHeight / 2)
       }
@@ -122,13 +120,14 @@ class JuliaDreamService : FractalDreamService() {
       y: Int,
       transform: AffineTransform
     ): Int {
+      val localMaxIterations = maxIterations
       var zx = transform.zx_x * x + transform.zx_y * y + transform.zx_c
       var zy = transform.zy_x * x + transform.zy_y * y + transform.zy_c
       val jc_real = juliaC.first
       val jc_imag = juliaC.second
 
       var i = 0
-      while (i < MAX_ITERATIONS && zx * zx + zy * zy < ESCAPE_RADIUS_SQUARED) {
+      while (i < localMaxIterations && zx * zx + zy * zy < ESCAPE_RADIUS_SQUARED) {
         val temp = zx * zx - zy * zy + jc_real
         zy = 2.0 * zx * zy + jc_imag
         zx = temp
@@ -137,8 +136,6 @@ class JuliaDreamService : FractalDreamService() {
 
       return calculateColor(i, zx, zy)
     }
-
-
   }
 
   companion object {

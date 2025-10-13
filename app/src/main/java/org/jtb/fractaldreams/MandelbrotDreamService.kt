@@ -1,7 +1,6 @@
 package org.jtb.fractaldreams
 
 import android.content.Context
-import kotlin.math.log2
 import kotlin.random.Random
 
 class MandelbrotDreamService : FractalDreamService() {
@@ -11,6 +10,9 @@ class MandelbrotDreamService : FractalDreamService() {
   }
 
   private inner class MandelbrotView(context: Context, serviceScope: kotlinx.coroutines.CoroutineScope) : FractalView(context, serviceScope) {
+    override val maxIterations = 256
+    override val precisionLimit = 1.0E-4
+
     override fun getInitialCoordinates(isPortrait: Boolean, width: Int, height: Int): DoubleArray {
       val cXminInitial = -2.0;
       val cXmaxInitial = 1.0
@@ -22,14 +24,12 @@ class MandelbrotDreamService : FractalDreamService() {
       return doubleArrayOf(cXminInitial, cYminInitial, cWidthInitial, cHeightInitial)
     }
 
-    /**
-     * Iterate on a single pixel, returning the number of iterations before escape.
-     */
     private fun iteratePixel(zx: Double, zy: Double): Int {
-      var cx = zx;
-      var cy = zy;
+      val localMaxIterations = maxIterations
+      var cx = 0.0
+      var cy = 0.0
       var i = 0
-      while (i < MAX_ITERATIONS && cx * cx + cy * cy < ESCAPE_RADIUS_SQUARED) {
+      while (i < localMaxIterations && cx * cx + cy * cy < ESCAPE_RADIUS_SQUARED) {
         val temp = cx * cx - cy * cy + zx;
         cy = 2.0 * cx * cy + zy;
         cx = temp;
@@ -47,6 +47,7 @@ class MandelbrotDreamService : FractalDreamService() {
       cWidth: Double,
       cHeight: Double
     ): Pair<Double, Double> {
+      val localMaxIterations = maxIterations
       var bestX = 0.0
       var bestY = 0.0
       var maxIterationsFound = 0
@@ -67,7 +68,7 @@ class MandelbrotDreamService : FractalDreamService() {
 
         val iterations = iteratePixel(zx, zy)
 
-        if (iterations > maxIterationsFound && iterations < MAX_ITERATIONS) {
+        if (iterations > maxIterationsFound && iterations < localMaxIterations) {
           maxIterationsFound = iterations
           bestX = zx
           bestY = zy
@@ -75,7 +76,6 @@ class MandelbrotDreamService : FractalDreamService() {
         i++
       }
 
-      // Fallback in case no interesting point is found
       if (maxIterationsFound == 0) {
         return ZOOM_SEAHORSE_VALLEY
       }
@@ -88,14 +88,14 @@ class MandelbrotDreamService : FractalDreamService() {
       y: Int,
       transform: AffineTransform
     ): Int {
-      // "Rotate" the pixel coordinates to find the corresponding complex number
+      val localMaxIterations = maxIterations
       val finalZx = transform.zx_x * x + transform.zx_y * y + transform.zx_c
       val finalZy = transform.zy_x * x + transform.zy_y * y + transform.zy_c
 
-      var cx = finalZx;
-      var cy = finalZy;
+      var cx = 0.0
+      var cy = 0.0
       var i = 0
-      while (i < MAX_ITERATIONS && cx * cx + cy * cy < ESCAPE_RADIUS_SQUARED) {
+      while (i < localMaxIterations && cx * cx + cy * cy < ESCAPE_RADIUS_SQUARED) {
         val temp = cx * cx - cy * cy + finalZx
         cy = 2.0 * cx * cy + finalZy;
         cx = temp;
