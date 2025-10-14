@@ -1,7 +1,6 @@
 package org.jtb.fractaldreams
 
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlin.math.abs
 import kotlin.random.Random
@@ -14,7 +13,7 @@ class BurningShipDreamService : FractalDreamService() {
 
   private inner class BurningShipView(context: Context, serviceScope: CoroutineScope) : FractalView(context, serviceScope) {
     override val maxIterations = 64
-    override val precisionLimit = 1.0E-8
+    override val precisionLimit = 1.0E-12
 
     override fun getInitialCoordinates(isPortrait: Boolean, width: Int, height: Int): DoubleArray {
       val centerX = -1.77
@@ -32,8 +31,8 @@ class BurningShipDreamService : FractalDreamService() {
       var z_imag = 0.0
       var i = 0
       while (i < localMaxIterations && z_real * z_real + z_imag * z_imag < ESCAPE_RADIUS_SQUARED) {
-        val z_real_abs = abs(z_real)
-        val z_imag_abs = abs(z_imag)
+        val z_real_abs = fastAbs(z_real)
+        val z_imag_abs = fastAbs(z_imag)
         val z_real_next = z_real_abs * z_real_abs - z_imag_abs * z_imag_abs + zx
         val z_imag_next = 2.0 * z_real_abs * z_imag_abs + zy
         z_real = z_real_next
@@ -104,8 +103,8 @@ class BurningShipDreamService : FractalDreamService() {
 
       var i = 0
       while (i < localMaxIterations && z_real * z_real + z_imag * z_imag < ESCAPE_RADIUS_SQUARED) {
-        val z_real_abs = abs(z_real)
-        val z_imag_abs = abs(z_imag)
+        val z_real_abs = fastAbs(z_real)
+        val z_imag_abs = fastAbs(z_imag)
         val z_real_next = z_real_abs * z_real_abs - z_imag_abs * z_imag_abs + c_real
         val z_imag_next = 2.0 * z_real_abs * z_imag_abs + c_imag
         z_real = z_real_next
@@ -121,3 +120,7 @@ class BurningShipDreamService : FractalDreamService() {
     private val INTERESTING_POINT = Pair(-1.77, -0.05)
   }
 }
+
+// For some reason, Math.abs is 15-20x slower on Android 15!
+@Suppress("NOTHING_TO_INLINE")
+private inline fun fastAbs(d: Double) = if (d < 0) -d else d
