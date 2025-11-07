@@ -367,8 +367,8 @@ abstract class FractalDreamService : DreamService() {
         async {
           val startY = core * sliceHeight
           val endY = if (core == SLICES - 1) height else startY + sliceHeight
-          val colorArray = IntArray(blockSize * blockSize)
-          val isPixelSet = BooleanArray(blockSize * blockSize)
+          val colorArray = IntArray(MAX_BLOCK_SIZE * MAX_BLOCK_SIZE)
+          val isPixelSet = BooleanArray(MAX_BLOCK_SIZE * MAX_BLOCK_SIZE)
 
           var blockY = startY
           while (blockY < endY) {
