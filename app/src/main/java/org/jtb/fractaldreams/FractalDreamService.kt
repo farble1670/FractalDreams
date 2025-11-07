@@ -536,8 +536,8 @@ abstract class FractalDreamService : DreamService() {
         val index1 = continuousIndex.toInt()
         val index2 = index1 + 1
 
-        val color1 = palette[Math.floorMod(index1 + colorOffset, localMaxIterations)]
-        val color2 = palette[Math.floorMod(index2 + colorOffset, localMaxIterations)]
+        val color1 = palette[(index1 + colorOffset) % localMaxIterations]
+        val color2 = palette[(index2 + colorOffset) % localMaxIterations]
 
         val fraction = (continuousIndex - continuousIndex.toInt()).toFloat()
         val r = (Colors.r(color1) * (1 - fraction) + Colors.r(color2) * fraction).toInt()
