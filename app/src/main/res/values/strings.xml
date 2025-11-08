@@ -1,5 +1,7 @@
 <resources>
-  <string name="app_name">FractalDreams</string>
-    <string name="julia_dream_title">Julia Dream</string>
-    <string name="burning_ship_dream_title">Burning Ship Dream</string>
+    <string name="app_name">Fractal Dreams</string>
+    <string name="mandelbrot_dream_name">Mandelbrot</string>
+    <string name="julia_dream_name">Julia</string>
+    <string name="burning_ship_dream_title">Burning Ship</string>
+    <string name="gl_mandelbrot_dream_name">GL Mandelbrot</string>
 </resources>
