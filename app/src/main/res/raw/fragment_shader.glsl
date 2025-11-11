@@ -4,11 +4,12 @@ uniform vec2 u_resolution;
 uniform float u_time;
 uniform vec2 u_view_center;
 uniform vec2 u_view_size;
-uniform float u_angle;
+uniform float u_cos_angle;
+uniform float u_sin_angle;
 uniform float u_swap_coords;  // 1.0 for portrait (swap), 0.0 for landscape
+uniform int u_max_iterations;
 
 // Mandelbrot calculation constants
-const int MAX_ITERATIONS = 256;           // Maximum iterations before assuming point is in set
 const float ESCAPE_RADIUS_SQUARED = 4.0;  // Squared escape radius (2.0^2)
 
 // Color constants
@@ -48,12 +49,10 @@ void main() {
         uv.y *= u_view_size.x * 0.5 / aspect;
     }
 
-    // Apply rotation around origin
-    float cosAngle = cos(u_angle);
-    float sinAngle = sin(u_angle);
+    // Apply rotation around origin (using pre-calculated cos/sin from CPU)
     vec2 rotated;
-    rotated.x = uv.x * cosAngle - uv.y * sinAngle;
-    rotated.y = uv.x * sinAngle + uv.y * cosAngle;
+    rotated.x = uv.x * u_cos_angle - uv.y * u_sin_angle;
+    rotated.y = uv.x * u_sin_angle + uv.y * u_cos_angle;
 
     // Translate to view center in complex plane
     vec2 c = rotated + u_view_center;
@@ -62,7 +61,7 @@ void main() {
     vec2 z = vec2(0.0, 0.0);
     int iterations = 0;
 
-    for (int i = 0; i < MAX_ITERATIONS; i++) {
+    for (int i = 0; i < u_max_iterations; i++) {
         if (dot(z, z) > ESCAPE_RADIUS_SQUARED) break;
 
         // z = z^2 + c
@@ -74,7 +73,7 @@ void main() {
     }
 
     // Color based on iterations
-    if (iterations == MAX_ITERATIONS - 1) {
+    if (iterations >= u_max_iterations - 1) {
         // Point is in the set - render black
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     } else {
