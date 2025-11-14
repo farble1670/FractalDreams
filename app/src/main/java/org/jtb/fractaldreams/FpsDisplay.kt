@@ -9,6 +9,10 @@ import java.util.LinkedList
 import java.util.Locale
 
 class FpsDisplay {
+    companion object {
+        const val WINDOW_SIZE_MS = 10000L // 10 seconds
+    }
+
     private val textPaint = Paint().apply {
         color = Color.WHITE
         textSize = 24f
@@ -35,7 +39,6 @@ class FpsDisplay {
     private val frameTimestamps = LinkedList<Long>()
     private var fps = 0.0f
     private var lastDisplayUpdateTime: Long = 0
-    private val windowSizeMs = 10000L // 10 seconds
     private val displayUpdateIntervalMs = 1000L // 1 second
 
     fun update() {
@@ -43,7 +46,7 @@ class FpsDisplay {
         frameTimestamps.add(currentTime)
 
         // Remove timestamps older than our window
-        while (frameTimestamps.isNotEmpty() && currentTime - frameTimestamps.first() > windowSizeMs) {
+        while (frameTimestamps.isNotEmpty() && currentTime - frameTimestamps.first() > WINDOW_SIZE_MS) {
             frameTimestamps.removeFirst()
         }
 
@@ -58,6 +61,8 @@ class FpsDisplay {
             lastDisplayUpdateTime = currentTime
         }
     }
+
+    fun getFps(): Float = fps
 
     fun draw(canvas: Canvas) {
         val fpsText = String.format(Locale.ROOT, "FPS: %.1f", fps)

@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.opengl.GLSurfaceView
 import android.service.dreams.DreamService
+import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
 import kotlinx.coroutines.CoroutineScope
@@ -15,15 +16,20 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.log2
 
 class GLMandelbrotDreamService : DreamService() {
   private companion object {
     const val OVERLAY_UPDATE_MS = 100L
-    const val RENDER_SCALE = 1
+    const val INITIAL_RENDER_SCALE = 1
+    const val LOW_FPS_THRESHOLD = 20.0f
+    const val FPS_CHECK_DELAY_MS = 2000L  // Wait 2 seconds before first check
+    const val FPS_CHECK_INTERVAL_MS = 2000L  // Check every 2 seconds
+    const val MAX_RENDER_SCALE = 4
   }
 
-  private lateinit var glSurfaceView: GLSurfaceView
+  private lateinit var glSurfaceView: ScaledGLSurfaceView
   private lateinit var glRenderer: GLMandelbrotRenderer
   private lateinit var overlayView: OverlayView
 
@@ -31,6 +37,8 @@ class GLMandelbrotDreamService : DreamService() {
   private val serviceScope = CoroutineScope(Dispatchers.Default + job)
 
   private val fpsDisplay = FpsDisplay()
+
+  private var currentRenderScale = INITIAL_RENDER_SCALE
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
@@ -58,7 +66,7 @@ class GLMandelbrotDreamService : DreamService() {
       )
     }
 
-    glSurfaceView = ScaledGLSurfaceView(this, RENDER_SCALE)
+    glSurfaceView = ScaledGLSurfaceView(this, INITIAL_RENDER_SCALE)
     glSurfaceView.setEGLContextClientVersion(2)
     glRenderer = GLMandelbrotRenderer(this, fpsDisplay) {
       // Callback: search for next zoom target in background
@@ -85,6 +93,25 @@ class GLMandelbrotDreamService : DreamService() {
 
     // Start computing the first target in background
     searchNextZoomTarget()
+
+    // Monitor FPS and adaptively adjust quality
+    serviceScope.launch {
+      delay(FPS_CHECK_DELAY_MS)  // Wait for initial warmup
+      while (isActive && currentRenderScale < MAX_RENDER_SCALE) {
+        val fps = fpsDisplay.getFps()
+        if (fps < LOW_FPS_THRESHOLD) {
+          currentRenderScale *= 2
+          Log.i("GLMandelbrotDream", "Low FPS ($fps), reducing quality to scale=$currentRenderScale")
+          withContext(Dispatchers.Main) {
+            glSurfaceView.changeScale(currentRenderScale)
+          }
+          // Wait for FPS window to completely replace old samples
+          delay(FpsDisplay.WINDOW_SIZE_MS)
+        } else {
+          delay(FPS_CHECK_INTERVAL_MS)
+        }
+      }
+    }
   }
 
   override fun onDreamingStopped() {
@@ -120,7 +147,7 @@ class GLMandelbrotDreamService : DreamService() {
     }
   }
 
-  private class ScaledGLSurfaceView(context: Context, private val scale: Int) :
+  private class ScaledGLSurfaceView(context: Context, var scale: Int) :
       GLSurfaceView(context) {
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
       super.onMeasure(widthMeasureSpec, heightMeasureSpec)
@@ -129,6 +156,11 @@ class GLMandelbrotDreamService : DreamService() {
 
       // Set the actual GL surface to be smaller
       holder.setFixedSize(width / scale, height / scale)
+    }
+
+    fun changeScale(newScale: Int) {
+      scale = newScale
+      requestLayout()  // Trigger remeasure
     }
   }
 
