@@ -1,12 +1,9 @@
 package org.jtb.fractaldreams
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Color
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
-import android.opengl.GLUtils
-import android.util.Log
+import android.os.SystemClock
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.ByteBuffer
@@ -16,40 +13,44 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.pow
 import kotlin.random.Random
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class GLMandelbrotRenderer(
   private val context: Context,
   private val fpsDisplay: FpsDisplay,
-  private val onRequestNewTarget: () -> Unit
+  private val scope: CoroutineScope
 ) : GLSurfaceView.Renderer {
   private val TAG = "GLMandelbrotRenderer"
 
   // Animation constants
   private companion object {
     // Zoom and rotation speeds (time-based, not frame-based)
-    const val ZOOM_SPEED =
-        0.25f                 // Zoom speed multiplier (1.0 = normal, <1.0 = slower, >1.0 = faster)
-    const val ROTATION_SPEED = 0.125f             // Rotation speed in radians per second
-    const val TIME_INCREMENT_PER_SEC = 0.5f    // Time increment per second for color cycling
+    const val ZOOM_RATE = 0.9985                // Zoom factor per frame at 60 FPS (closer to 1.0 = slower)
+    const val ROTATION_SPEED = 0.125f           // Rotation speed in radians per second
+    const val TIME_INCREMENT_PER_SEC = 0.5f     // Time increment per second for color cycling
     const val TARGET_FPS = 60.0f                // Reference frame rate for zoom calculations
 
     // Target point (seahorse valley coordinates - fallback)
-    const val SEAHORSE_VALLEY_X = -0.7451968299999999f
-    const val SEAHORSE_VALLEY_Y = 0.10186988500000009f
+    const val SEAHORSE_VALLEY_X = -0.7451968299999999
+    const val SEAHORSE_VALLEY_Y = 0.10186988500000009
 
-    // Zoom target search
-    const val ZOOM_SEARCH_MAX = 1024            // Number of random samples to try
+    // Fraction of total pixels to sample to find an interesting zoom point
+    // This value yields ~4096 samples on a 1920x1080 display
+    const val ZOOM_SEARCH_FRACTION = 1.0f / 506.25f
+    const val ZOOM_SEARCH_MIN = 1024
     const val MAX_ITERATIONS = 256              // Must match shader
     const val ESCAPE_RADIUS_SQUARED = 4.0       // Must match shader
 
-    // Initial view bounds
-    const val INITIAL_X_MIN = -2.0f             // Initial left edge in complex plane
-    const val INITIAL_Y_MIN = -1.5f             // Initial bottom edge in complex plane
-    const val INITIAL_WIDTH = 3.0f              // Initial view width in complex plane
-    const val INITIAL_HEIGHT = 3.0f             // Initial view height in complex plane
+    // Initial view bounds (using doubles for high precision)
+    const val INITIAL_X_MIN = -2.0              // Initial left edge in complex plane
+    const val INITIAL_Y_MIN = -1.5              // Initial bottom edge in complex plane
+    const val INITIAL_WIDTH = 3.0               // Initial view width in complex plane
+    const val INITIAL_HEIGHT = 3.0              // Initial view height in complex plane
 
     // Reset threshold
-    const val MIN_ZOOM_THRESHOLD = 0.00005f     // When to reset zoom (approaching precision limit)
+    const val MIN_ZOOM_THRESHOLD = 0.00005      // When to reset zoom (approaching precision limit)
   }
 
   private var program: Int = 0
@@ -62,18 +63,19 @@ class GLMandelbrotRenderer(
   private var sinAngleHandle: Int = 0
   private var swapCoordsHandle: Int = 0
   private var maxIterationsHandle: Int = 0
+  private var targetHandle: Int = 0
 
   private val resolution = FloatArray(2)
   private var swapCoords = 0f  // 1.0 for portrait, 0.0 for landscape
 
-  // Current view bounds in complex plane
+  // Current view bounds in complex plane (using doubles for high precision)
   private var cXmin = INITIAL_X_MIN
   private var cYmin = INITIAL_Y_MIN
   private var cWidth = INITIAL_WIDTH
   private var cHeight = INITIAL_HEIGHT
-  private var angle = 0f
+  private var angle = 0.0
 
-  // Current zoom target
+  // Current zoom target (using doubles for high precision)
   private var targetX = SEAHORSE_VALLEY_X
   private var targetY = SEAHORSE_VALLEY_Y
 
@@ -87,7 +89,7 @@ class GLMandelbrotRenderer(
 
   // Time tracking
   private var lastFrameTime = 0L
-  private var time = 0f
+  private var time = 0.0
 
   private val vertexBuffer: FloatBuffer
 
@@ -100,11 +102,12 @@ class GLMandelbrotRenderer(
   )
 
   init {
-    val bb = ByteBuffer.allocateDirect(squareCoords.size * 4)
-    bb.order(ByteOrder.nativeOrder())
-    vertexBuffer = bb.asFloatBuffer()
-    vertexBuffer.put(squareCoords)
-    vertexBuffer.position(0)
+    vertexBuffer = ByteBuffer.allocateDirect(squareCoords.size * 4)
+      .order(ByteOrder.nativeOrder())
+      .asFloatBuffer().apply {
+        put(squareCoords)
+        position(0)
+      }
   }
 
   private fun loadShader(type: Int, shaderCode: String): Int {
@@ -118,7 +121,7 @@ class GLMandelbrotRenderer(
     if (compiled[0] == 0) {
       val info = GLES20.glGetShaderInfoLog(shader)
       GLES20.glDeleteShader(shader)
-      throw RuntimeException("Could not compile shader $type:\n$info")
+      throw IllegalStateException("Could not compile shader, type: $type, info: $info")
     }
 
     return shader
@@ -137,11 +140,11 @@ class GLMandelbrotRenderer(
 
   private fun updateAnimation() {
     // Calculate delta time
-    val currentTime = System.currentTimeMillis()
+    val currentTime = SystemClock.elapsedRealtime()
     val deltaTime = if (lastFrameTime == 0L) {
-      1.0f / TARGET_FPS  // First frame, use target FPS
+      1.0 / TARGET_FPS
     } else {
-      (currentTime - lastFrameTime) / 1000.0f  // Convert ms to seconds
+      (currentTime - lastFrameTime) / 1000.0
     }
     lastFrameTime = currentTime
 
@@ -151,7 +154,7 @@ class GLMandelbrotRenderer(
       cYmin = INITIAL_Y_MIN
       cWidth = INITIAL_WIDTH
       cHeight = INITIAL_HEIGHT
-      angle = 0f
+      angle = 0.0
       lastFrameTime = currentTime  // Reset time to avoid huge delta on next frame
 
       // Use pre-computed target if ready, otherwise search now
@@ -167,12 +170,11 @@ class GLMandelbrotRenderer(
       }
 
       // Request a new target to be computed in background for next reset
-      onRequestNewTarget()
+      requestNewTarget()
     } else {
-      // Zoom towards the target point (time-based)
-      // At 60 FPS with ZOOM_SPEED=1.0, this matches the old 0.99 per-frame behavior
-      val zoomPower = deltaTime * TARGET_FPS * ZOOM_SPEED
-      val zoomFactor = 0.99.pow(zoomPower.toDouble()).toFloat()
+      // Zoom towards the target point (time-based, double precision)
+      val zoomPower = deltaTime * TARGET_FPS
+      val zoomFactor = ZOOM_RATE.pow(zoomPower)
       val newWidth = cWidth * zoomFactor
       val newHeight = cHeight * zoomFactor
 
@@ -220,6 +222,7 @@ class GLMandelbrotRenderer(
     sinAngleHandle = GLES20.glGetUniformLocation(program, "u_sin_angle")
     swapCoordsHandle = GLES20.glGetUniformLocation(program, "u_swap_coords")
     maxIterationsHandle = GLES20.glGetUniformLocation(program, "u_max_iterations")
+    targetHandle = GLES20.glGetUniformLocation(program, "u_target")
   }
 
   override fun onDrawFrame(gl: GL10) {
@@ -233,23 +236,24 @@ class GLMandelbrotRenderer(
 
     GLES20.glUseProgram(program)
 
-    // Calculate view center
-    val viewCenterX = cXmin + cWidth / 2.0f
-    val viewCenterY = cYmin + cHeight / 2.0f
+    // Calculate view center (double precision math, convert to float for shader)
+    val viewCenterX = (cXmin + cWidth / 2.0).toFloat()
+    val viewCenterY = (cYmin + cHeight / 2.0).toFloat()
 
     // Pre-calculate trig functions on CPU (once per frame instead of once per pixel)
     val cosAngle = kotlin.math.cos(angle)
     val sinAngle = kotlin.math.sin(angle)
 
-    // Pass uniforms to the shader
+    // Pass uniforms to the shader (convert doubles to floats)
     GLES20.glUniform2fv(resolutionHandle, 1, resolution, 0)
-    GLES20.glUniform1f(timeHandle, time)
+    GLES20.glUniform1f(timeHandle, time.toFloat())
     GLES20.glUniform2f(viewCenterHandle, viewCenterX, viewCenterY)
-    GLES20.glUniform2f(viewSizeHandle, cWidth, cHeight)
-    GLES20.glUniform1f(cosAngleHandle, cosAngle)
-    GLES20.glUniform1f(sinAngleHandle, sinAngle)
+    GLES20.glUniform2f(viewSizeHandle, cWidth.toFloat(), cHeight.toFloat())
+    GLES20.glUniform1f(cosAngleHandle, cosAngle.toFloat())
+    GLES20.glUniform1f(sinAngleHandle, sinAngle.toFloat())
     GLES20.glUniform1f(swapCoordsHandle, swapCoords)
     GLES20.glUniform1i(maxIterationsHandle, MAX_ITERATIONS)
+    GLES20.glUniform2f(targetHandle, targetX.toFloat(), targetY.toFloat())
 
     GLES20.glEnableVertexAttribArray(positionHandle)
     GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
@@ -290,45 +294,51 @@ class GLMandelbrotRenderer(
     return i
   }
 
+  /**
+   * Search for an random, interesting zoom point in the Mandelbrot set.
+   *
+   * This is (normally) called on a background thread while the GPU is rendering.
+   */
   // Search for an interesting zoom point within the current view
-  fun searchZoomPoint(): Pair<Float, Float> {
-    var bestX = SEAHORSE_VALLEY_X.toDouble()
-    var bestY = SEAHORSE_VALLEY_Y.toDouble()
-    var maxIterationsFound = 0
+  internal fun searchZoomPoint(): Pair<Double, Double> {
+    var bestX = SEAHORSE_VALLEY_X
+    var bestY = SEAHORSE_VALLEY_Y
 
-    val currentCXmin = cXmin.toDouble()
-    val currentCYmin = cYmin.toDouble()
-    val currentCWidth = cWidth.toDouble()
-    val currentCHeight = cHeight.toDouble()
+    var maxIterations = 0
 
-    repeat(ZOOM_SEARCH_MAX) {
+    // Calculate search count as fraction of total pixels
+    val searchCount = (resolution[0] * resolution[1] * ZOOM_SEARCH_FRACTION).toInt()
+      .coerceAtLeast(ZOOM_SEARCH_MIN)
+
+    repeat(searchCount) {
       val randX = Random.nextDouble()
       val randY = Random.nextDouble()
 
-      val cx = currentCXmin + currentCWidth * randX
-      val cy = currentCYmin + currentCHeight * randY
+      val cx = cXmin + cWidth * randX
+      val cy = cYmin + cHeight * randY
 
       val iterations = iteratePixel(cx, cy)
 
-      if (iterations > maxIterationsFound && iterations < MAX_ITERATIONS) {
-        maxIterationsFound = iterations
+      if (iterations > maxIterations && iterations < MAX_ITERATIONS) {
+        maxIterations = iterations
         bestX = cx
         bestY = cy
       }
     }
 
-    // If we didn't find anything interesting, use seahorse valley
-    if (maxIterationsFound == 0) {
-      return Pair(SEAHORSE_VALLEY_X, SEAHORSE_VALLEY_Y)
-    }
-
-    return Pair(bestX.toFloat(), bestY.toFloat())
+    return Pair(bestX, bestY)
   }
 
-  // Set the next target (called from background thread)
-  fun setNextTarget(x: Float, y: Float) {
+  fun setNextTarget(x: Double, y: Double) {
     nextTargetX = x
     nextTargetY = y
     nextTargetReady = true
+  }
+
+  private fun requestNewTarget() {
+    scope.launch(Dispatchers.Default) {
+      val (nextX, nextY) = searchZoomPoint()
+      setNextTarget(nextX, nextY)
+    }
   }
 }

@@ -8,6 +8,7 @@ uniform float u_cos_angle;
 uniform float u_sin_angle;
 uniform float u_swap_coords;  // 1.0 for portrait (swap), 0.0 for landscape
 uniform int u_max_iterations;
+uniform vec2 u_target;  // Zoom target point in complex plane
 
 // Mandelbrot calculation constants
 const float ESCAPE_RADIUS_SQUARED = 4.0;  // Squared escape radius (2.0^2)
@@ -49,13 +50,17 @@ void main() {
         uv.y *= u_view_size.x * 0.5 / aspect;
     }
 
-    // Apply rotation around origin (using pre-calculated cos/sin from CPU)
-    vec2 rotated;
-    rotated.x = uv.x * u_cos_angle - uv.y * u_sin_angle;
-    rotated.y = uv.x * u_sin_angle + uv.y * u_cos_angle;
+    // Apply rotation around zoom target point (using pre-calculated cos/sin from CPU)
+    // First translate to view center, then get position relative to target
+    vec2 rel_to_target = uv + u_view_center - u_target;
 
-    // Translate to view center in complex plane
-    vec2 c = rotated + u_view_center;
+    // Rotate around target (inverse rotation - when view rotates CW, we sample CCW)
+    vec2 rotated;
+    rotated.x = rel_to_target.x * u_cos_angle + rel_to_target.y * u_sin_angle;
+    rotated.y = -rel_to_target.x * u_sin_angle + rel_to_target.y * u_cos_angle;
+
+    // Translate back from target to get final complex plane coordinate
+    vec2 c = rotated + u_target;
 
     // Mandelbrot iteration
     vec2 z = vec2(0.0, 0.0);

@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import kotlin.math.log2
 
 class GLMandelbrotDreamService : DreamService() {
@@ -24,8 +25,8 @@ class GLMandelbrotDreamService : DreamService() {
     const val OVERLAY_UPDATE_MS = 100L
     const val INITIAL_RENDER_SCALE = 1
     const val LOW_FPS_THRESHOLD = 20.0f
-    const val FPS_CHECK_DELAY_MS = 2000L  // Wait 2 seconds before first check
-    const val FPS_CHECK_INTERVAL_MS = 2000L  // Check every 2 seconds
+    const val FPS_CHECK_DELAY_MS = 2000L
+    const val FPS_CHECK_INTERVAL_MS = 2000L
     const val MAX_RENDER_SCALE = 4
   }
 
@@ -68,10 +69,7 @@ class GLMandelbrotDreamService : DreamService() {
 
     glSurfaceView = ScaledGLSurfaceView(this, INITIAL_RENDER_SCALE)
     glSurfaceView.setEGLContextClientVersion(2)
-    glRenderer = GLMandelbrotRenderer(this, fpsDisplay) {
-      // Callback: search for next zoom target in background
-      searchNextZoomTarget()
-    }
+    glRenderer = GLMandelbrotRenderer(this, fpsDisplay, serviceScope)
     glSurfaceView.setRenderer(glRenderer)
     // Use continuous mode - GL thread controls frame rate with vsync
     glSurfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
@@ -91,25 +89,26 @@ class GLMandelbrotDreamService : DreamService() {
     glSurfaceView.onResume()
     serviceScope.launch { updateOverlay() }
 
-    // Start computing the first target in background
-    searchNextZoomTarget()
-
     // Monitor FPS and adaptively adjust quality
-    serviceScope.launch {
-      delay(FPS_CHECK_DELAY_MS)  // Wait for initial warmup
-      while (isActive && currentRenderScale < MAX_RENDER_SCALE) {
-        val fps = fpsDisplay.getFps()
-        if (fps < LOW_FPS_THRESHOLD) {
-          currentRenderScale *= 2
-          Log.i("GLMandelbrotDream", "Low FPS ($fps), reducing quality to scale=$currentRenderScale")
-          withContext(Dispatchers.Main) {
-            glSurfaceView.changeScale(currentRenderScale)
-          }
-          // Wait for FPS window to completely replace old samples
-          delay(FpsDisplay.WINDOW_SIZE_MS)
-        } else {
-          delay(FPS_CHECK_INTERVAL_MS)
+    serviceScope.launch { observeFps() }
+  }
+
+  private suspend fun observeFps() {
+    delay(FPS_CHECK_DELAY_MS)  // Wait for initial warmup
+    while (coroutineContext.isActive && currentRenderScale < MAX_RENDER_SCALE) {
+      val fps = fpsDisplay.getFps()
+      if (fps < LOW_FPS_THRESHOLD) {
+        currentRenderScale *= 2
+        Log.i("GLMandelbrotDream", "Low FPS ($fps), reducing quality to scale=$currentRenderScale")
+
+        withContext(Dispatchers.Main) {
+          glSurfaceView.changeScale(currentRenderScale)
         }
+
+        // Wait for FPS window to completely replace old samples
+        delay(FpsDisplay.WINDOW_SIZE_MS)
+      } else {
+        delay(FPS_CHECK_INTERVAL_MS)
       }
     }
   }
@@ -133,17 +132,9 @@ class GLMandelbrotDreamService : DreamService() {
   private suspend fun updateOverlay() {
     // GL rendering happens continuously on GL thread with vsync
     // This just updates the overlay (FPS counter, etc.)
-    while (serviceScope.isActive) {
+    while (coroutineContext.isActive) {
       overlayView.postInvalidate()
       delay(OVERLAY_UPDATE_MS)
-    }
-  }
-
-  private fun searchNextZoomTarget() {
-    // Launch background search for next zoom target
-    serviceScope.launch(Dispatchers.Default) {
-      val (nextX, nextY) = glRenderer.searchZoomPoint()
-      glRenderer.setNextTarget(nextX, nextY)
     }
   }
 
