@@ -11,7 +11,7 @@ uniform int u_max_iterations;
 uniform vec2 u_target;  // Zoom target point in complex plane
 
 // Mandelbrot calculation constants
-const float ESCAPE_RADIUS_SQUARED = 4.0;  // Squared escape radius (2.0^2)
+uniform float u_escape_radius_squared;  // Squared escape radius (2.0^2)
 
 // Color constants
 const float COLOR_SCALE = 0.01;           // Scale factor for iteration-based color
@@ -67,7 +67,7 @@ void main() {
     int iterations = 0;
 
     for (int i = 0; i < u_max_iterations; i++) {
-        if (dot(z, z) > ESCAPE_RADIUS_SQUARED) break;
+        if (dot(z, z) > u_escape_radius_squared) break;
 
         // z = z^2 + c
         float temp = z.x * z.x - z.y * z.y + c.x;

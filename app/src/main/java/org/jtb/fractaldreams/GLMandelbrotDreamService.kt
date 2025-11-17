@@ -11,21 +11,18 @@ import android.view.View
 import android.widget.FrameLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
-import kotlin.math.log2
 
 class GLMandelbrotDreamService : DreamService() {
   private companion object {
     const val OVERLAY_UPDATE_MS = 100L
     const val INITIAL_RENDER_SCALE = 1
     const val LOW_FPS_THRESHOLD = 20.0f
-    const val FPS_CHECK_DELAY_MS = 2000L
     const val FPS_CHECK_INTERVAL_MS = 2000L
     const val MAX_RENDER_SCALE = 4
   }
@@ -34,8 +31,8 @@ class GLMandelbrotDreamService : DreamService() {
   private lateinit var glRenderer: GLMandelbrotRenderer
   private lateinit var overlayView: OverlayView
 
-  private val job = SupervisorJob()
-  private val serviceScope = CoroutineScope(Dispatchers.Default + job)
+  private val serviceJob = SupervisorJob()
+  private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
 
   private val fpsDisplay = FpsDisplay()
 
@@ -58,7 +55,7 @@ class GLMandelbrotDreamService : DreamService() {
     val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val configurationInfo = activityManager.deviceConfigurationInfo
     if (configurationInfo.reqGlEsVersion < 0x20000) {
-      throw RuntimeException(
+      throw IllegalStateException(
           "This device does not support OpenGL ES 2.0: reqGlEsVersion=${
             Integer.toHexString(
                 configurationInfo.reqGlEsVersion
@@ -86,20 +83,21 @@ class GLMandelbrotDreamService : DreamService() {
 
   override fun onDreamingStarted() {
     super.onDreamingStarted()
-    glSurfaceView.onResume()
-    serviceScope.launch { updateOverlay() }
 
-    // Monitor FPS and adaptively adjust quality
+    glSurfaceView.onResume()
+
+    serviceScope.launch { updateOverlay() }
     serviceScope.launch { observeFps() }
   }
 
   private suspend fun observeFps() {
-    delay(FPS_CHECK_DELAY_MS)  // Wait for initial warmup
+    delay(FpsDisplay.WINDOW_SIZE_MS)
+
     while (coroutineContext.isActive && currentRenderScale < MAX_RENDER_SCALE) {
       val fps = fpsDisplay.getFps()
       if (fps < LOW_FPS_THRESHOLD) {
         currentRenderScale *= 2
-        Log.i("GLMandelbrotDream", "Low FPS ($fps), reducing quality to scale=$currentRenderScale")
+        Log.i("GLMandelbrotDream", "Low FPS: ($fps), reducing quality to scale=$currentRenderScale")
 
         withContext(Dispatchers.Main) {
           glSurfaceView.changeScale(currentRenderScale)
@@ -114,13 +112,10 @@ class GLMandelbrotDreamService : DreamService() {
   }
 
   override fun onDreamingStopped() {
-    job.cancel()
-    super.onDreamingStopped()
+    serviceJob.cancel()
     glSurfaceView.onPause()
-  }
 
-  override fun onDetachedFromWindow() {
-    super.onDetachedFromWindow()
+    super.onDreamingStopped()
   }
 
   private var systemUiVisibility: Int
@@ -138,8 +133,11 @@ class GLMandelbrotDreamService : DreamService() {
     }
   }
 
-  private class ScaledGLSurfaceView(context: Context, var scale: Int) :
-      GLSurfaceView(context) {
+  private class ScaledGLSurfaceView(
+    context: Context,
+    var scale: Int
+  ) : GLSurfaceView(context) {
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
       super.onMeasure(widthMeasureSpec, heightMeasureSpec)
       val width = MeasureSpec.getSize(widthMeasureSpec)
@@ -151,7 +149,7 @@ class GLMandelbrotDreamService : DreamService() {
 
     fun changeScale(newScale: Int) {
       scale = newScale
-      requestLayout()  // Trigger remeasure
+      requestLayout()
     }
   }
 

@@ -22,7 +22,6 @@ class GLMandelbrotRenderer(
   private val fpsDisplay: FpsDisplay,
   private val scope: CoroutineScope
 ) : GLSurfaceView.Renderer {
-  private val TAG = "GLMandelbrotRenderer"
 
   // Animation constants
   private companion object {
@@ -40,8 +39,8 @@ class GLMandelbrotRenderer(
     // This value yields ~4096 samples on a 1920x1080 display
     const val ZOOM_SEARCH_FRACTION = 1.0f / 506.25f
     const val ZOOM_SEARCH_MIN = 1024
-    const val MAX_ITERATIONS = 256              // Must match shader
-    const val ESCAPE_RADIUS_SQUARED = 4.0       // Must match shader
+    const val MAX_ITERATIONS = 256
+    const val ESCAPE_RADIUS_SQUARED = 4.0
 
     // Initial view bounds (using doubles for high precision)
     const val INITIAL_X_MIN = -2.0              // Initial left edge in complex plane
@@ -64,6 +63,7 @@ class GLMandelbrotRenderer(
   private var swapCoordsHandle: Int = 0
   private var maxIterationsHandle: Int = 0
   private var targetHandle: Int = 0
+  private var escapeRadiusSquaredHandle: Int = 0
 
   private val resolution = FloatArray(2)
   private var swapCoords = 0f  // 1.0 for portrait, 0.0 for landscape
@@ -223,6 +223,7 @@ class GLMandelbrotRenderer(
     swapCoordsHandle = GLES20.glGetUniformLocation(program, "u_swap_coords")
     maxIterationsHandle = GLES20.glGetUniformLocation(program, "u_max_iterations")
     targetHandle = GLES20.glGetUniformLocation(program, "u_target")
+    escapeRadiusSquaredHandle = GLES20.glGetUniformLocation(program, "u_escape_radius_squared")
   }
 
   override fun onDrawFrame(gl: GL10) {
@@ -254,6 +255,7 @@ class GLMandelbrotRenderer(
     GLES20.glUniform1f(swapCoordsHandle, swapCoords)
     GLES20.glUniform1i(maxIterationsHandle, MAX_ITERATIONS)
     GLES20.glUniform2f(targetHandle, targetX.toFloat(), targetY.toFloat())
+    GLES20.glUniform1f(escapeRadiusSquaredHandle, ESCAPE_RADIUS_SQUARED.toFloat())
 
     GLES20.glEnableVertexAttribArray(positionHandle)
     GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
