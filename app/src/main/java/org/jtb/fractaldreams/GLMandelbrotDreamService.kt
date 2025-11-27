@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.opengl.GLSurfaceView
 import android.service.dreams.DreamService
 import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import kotlinx.coroutines.CoroutineScope
@@ -42,7 +44,7 @@ class GLMandelbrotDreamService : DreamService() {
     super.onAttachedToWindow()
 
     isFullscreen = true
-    isInteractive = true
+    isInteractive = false
 
     systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
