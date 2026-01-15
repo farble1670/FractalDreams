@@ -37,9 +37,10 @@ class FpsDisplay {
     }
 
     private val frameTimestamps = LinkedList<Long>()
-    private var fps = 0.0f
     private var lastDisplayUpdateTime: Long = 0
     private val displayUpdateIntervalMs = 1000L // 1 second
+
+    var fps = 0.0f
 
     fun update() {
         val currentTime = System.currentTimeMillis()
@@ -61,8 +62,6 @@ class FpsDisplay {
             lastDisplayUpdateTime = currentTime
         }
     }
-
-    fun getFps(): Float = fps
 
     fun draw(canvas: Canvas) {
         val fpsText = String.format(Locale.ROOT, "FPS: %.1f", fps)

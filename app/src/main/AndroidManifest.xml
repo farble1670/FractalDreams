@@ -65,6 +65,21 @@
                 android:name="android.service.dream"
                 android:resource="@xml/gl_mandelbrot_dream" />
         </service>
+
+        <service
+            android:name=".GLJuliaDreamService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/gl_julia_dream_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/gl_julia_dream" />
+        </service>
     </application>
 
 </manifest>

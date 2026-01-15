@@ -3,12 +3,12 @@ package org.jtb.fractaldreams
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 
-class GLMandelbrotDreamService : GLFractalDreamService() {
+class GLJuliaDreamService : GLFractalDreamService() {
   override fun createRenderer(
     context: Context,
     fpsDisplay: FpsDisplay,
     scope: CoroutineScope
   ): GLFractalRenderer {
-    return GLMandelbrotRenderer(context, fpsDisplay, scope)
+    return GLJuliaRenderer(context, fpsDisplay, scope)
   }
 }
